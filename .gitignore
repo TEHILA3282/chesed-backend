@@ -1,0 +1,20 @@
+﻿# Visual Studio / .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Publish output (לא ריפו קוד)
+..\api-publish/
+api-publish/
+
+# Logs
+*.log
+
+# Secrets - לא עולים לגיט!
+appsettings.*.SECRET.json
+
+# System
+Thumbs.db
+.DS_Store
