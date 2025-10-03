@@ -15,10 +15,8 @@ using ChafetzChesed.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
-/* --------- Logging --------- */
 builder.Logging.AddEventLog();
 
-/* --------- JWT settings --------- */
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>();
 
@@ -46,9 +44,9 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-/* --------- CORS (לוקאלי בלבד) --------- */
 builder.Services.AddCors(options =>
 {
+    // לפיתוח מקומי בלבד
     options.AddPolicy("AllowLocalhost4300", policy =>
     {
         policy.WithOrigins("http://localhost:4300")
@@ -152,49 +150,34 @@ app.UseStatusCodePages();
 /* --------- Swagger UI --------- */
 app.UseSwagger(c =>
 {
-    // תמיכה ב-PathBase (למשל כשאפליקציה מתארחת תחת /api ב-IIS)
+    // תמיכה ב-PathBase (למקרה של reverse proxy/תת נתיב)
     c.PreSerializeFilters.Add((swagger, req) =>
     {
         var basePath = req.PathBase.HasValue ? req.PathBase.Value : string.Empty;
         swagger.Servers = new List<OpenApiServer> { new OpenApiServer { Url = basePath } };
     });
 });
+
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("swagger/v1/swagger.json", "ChafetzChesed API v1");
-    c.RoutePrefix = "swagger"; // זמין ב- /swagger (או /api/swagger אם יש PathBase=/api)
+    c.SwaggerEndpoint("/api/swagger/v1/swagger.json", "ChafetzChesed API v1");
+    c.RoutePrefix = "swagger";
 });
 
 app.UseHttpsRedirection();
 
-/* CORS – רק לפיתוח מקומי */
 app.UseCors("AllowLocalhost4300");
 
-/* --------- Middlewares לאזור ה-API --------- */
-/* חשוב: כשמריצים כ-Application תחת /api ב-IIS, ה-PathBase יהיה "/api"
-   ואז Request.Path לא יתחיל ב-/api. לכן בודקים גם PathBase. */
-app.UseWhen(ctx =>
-{
-    var path = ctx.Request.Path.Value ?? string.Empty;
-    var basePath = ctx.Request.PathBase.Value ?? string.Empty;
 
-    return path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
-           || basePath.Equals("/api", StringComparison.OrdinalIgnoreCase)
-           || basePath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase);
-},
-branch =>
-{
-    branch.UseMiddleware<ApiKeyMiddleware>();            
-    branch.UseMiddleware<InstitutionResolverMiddleware>(); 
-    branch.UseMiddleware<JwtMiddleware>();                 
-});
+app.UseMiddleware<ApiKeyMiddleware>();
+app.UseMiddleware<InstitutionResolverMiddleware>();
+app.UseMiddleware<JwtMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/", () => Results.Ok("API is up"));
 app.MapGet("/health", () => Results.Ok("healthy"));
-
 
 app.MapControllers();
 

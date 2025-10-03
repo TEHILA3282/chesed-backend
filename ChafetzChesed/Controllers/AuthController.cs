@@ -20,7 +20,6 @@ namespace ChafetzChesed.Controllers
         private readonly AppDbContext _context;
         private readonly IEmailService _emailService;
 
-
         public AuthController(IRegistrationService registrationService, JwtService jwtService, AppDbContext context, IEmailService emailService)
         {
             _registrationService = registrationService;
@@ -51,13 +50,11 @@ namespace ChafetzChesed.Controllers
                  || u.ID == idNoLeadingZeros
                  || u.ID == idWithPadding)
                 && u.Password == hashedPassword
-                && u.InstitutionId == institutionId 
+                && u.InstitutionId == institutionId
             );
 
             if (user == null)
-            {
                 return Unauthorized(new { message = "אימייל/ת״ז/סיסמה שגויים או שאינם שייכים למוסד הנוכחי" });
-            }
 
             var role = string.IsNullOrEmpty(user.Role) ? "User" : user.Role;
 
@@ -88,8 +85,9 @@ namespace ChafetzChesed.Controllers
             if (user == null)
                 return Unauthorized("משתמש לא מאומת");
 
+            // סינון לפי InstitutionId (חשוב בסכמה מרובת מוסדות)
             var bankAccount = await _context.BankAccounts
-                .FirstOrDefaultAsync(b => b.RegistrationId == user.ID);
+                .FirstOrDefaultAsync(b => b.RegistrationId == user.ID && b.InstitutionId == user.InstitutionId);
 
             if (bankAccount == null)
                 return Ok(null);
@@ -120,7 +118,15 @@ namespace ChafetzChesed.Controllers
         [HttpGet("get-user/{id}")]
         public async Task<IActionResult> GetUser(string id)
         {
-            var user = await _registrationService.GetByIdAsync(id);
+            // ⚠️ החתימה החדשה דורשת מוסד
+            var institutionId = 0;
+            if (HttpContext.Items.TryGetValue("InstitutionId", out var v) && v is int ok && ok > 0)
+                institutionId = ok;
+
+            if (institutionId <= 0)
+                return BadRequest(new { message = "Institution is not resolved" });
+
+            var user = await _registrationService.GetByIdAsync(id, institutionId);
             if (user == null)
                 return NotFound(new { message = "משתמש לא נמצא" });
 
@@ -135,6 +141,7 @@ namespace ChafetzChesed.Controllers
                 user.RegistrationStatus
             });
         }
+
         [HttpPost("forgot-password")]
         [AllowAnonymous]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)

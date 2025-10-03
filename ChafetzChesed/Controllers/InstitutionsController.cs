@@ -4,35 +4,46 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-
 [ApiController]
-[Route("[controller]")] 
+[Route("[controller]")]
+[Route("api/[controller]")] // מאפשר גם /api/institutions/...
 public class InstitutionsController : ControllerBase
 {
     private readonly AppDbContext _db;
     public InstitutionsController(AppDbContext db) => _db = db;
 
+    // GET /institutions/123/public-info  וגם  /api/institutions/123/public-info
     [HttpGet("{institutionId:int}/public-info")]
-    public ActionResult<InstitutionPublicInfoDto> GetPublicInfoById(int institutionId)
-        => ToDto(institutionId);
+    [AllowAnonymous]
+    public async Task<ActionResult<InstitutionPublicInfoDto>> GetPublicInfoById(int institutionId)
+        => await ToDtoAsync(institutionId);
 
+    // GET /institutions/public-info  וגם  /api/institutions/public-info
+    // (מתבסס על InstitutionId שב־HttpContext.Items מהמיידלוור)
     [HttpGet("public-info")]
-    public ActionResult<InstitutionPublicInfoDto> GetPublicInfoFromContext()
+    [AllowAnonymous]
+    public async Task<ActionResult<InstitutionPublicInfoDto>> GetPublicInfoFromContext()
     {
         if (!HttpContext.Items.TryGetValue("InstitutionId", out var v) || v is not int id || id <= 0)
             return BadRequest("Institution is not resolved");
-        return ToDto(id);
+
+        return await ToDtoAsync(id);
     }
 
-    private ActionResult<InstitutionPublicInfoDto> ToDto(int id)
+    private async Task<ActionResult<InstitutionPublicInfoDto>> ToDtoAsync(int id)
     {
-        var inst = _db.Institutions.AsNoTracking().FirstOrDefault(x => x.InstitutionId == id);
+        // שימי לב לשמות העמודות/שדות: InstitutionId, ContactPhone, AvailabilityText
+        var inst = await _db.Institutions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.InstitutionId == id);
+
         if (inst is null) return NotFound();
 
         return Ok(new InstitutionPublicInfoDto
         {
+            InstitutionId = inst.InstitutionId,                  // ← חשוב לפרונט
             Phone = inst.ContactPhone ?? "03-0000000",
-            AvailabilityText = inst.AvailabilityText ?? "א'-ה' 09:30–10:30",
+            AvailabilityText = inst.AvailabilityText ?? "א׳–ה׳ 09:30–10:30"
         });
     }
 }

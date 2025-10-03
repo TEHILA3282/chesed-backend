@@ -39,10 +39,12 @@ namespace ChafetzChesed.BLL.Services
         }
 
         public async Task<IEnumerable<Registration>> GetAllAsync()
-            => await _context.Registrations.ToListAsync();
+            => await _context.Registrations.AsNoTracking().ToListAsync();
 
-        public async Task<Registration?> GetByIdAsync(string id)
-            => await _context.Registrations.FirstOrDefaultAsync(r => r.ID == id);
+        public async Task<Registration?> GetByIdAsync(string id, int institutionId)
+            => await _context.Registrations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.ID == id && r.InstitutionId == institutionId);
 
         public async Task<Registration> AddAsync(Registration registration)
         {
@@ -51,30 +53,31 @@ namespace ChafetzChesed.BLL.Services
             return registration;
         }
 
-        public async Task<bool> DeleteAsync(string id)
+        public async Task<bool> DeleteAsync(string id, int institutionId)
         {
-            var reg = await _context.Registrations.FindAsync(id);
+            var reg = await _context.Registrations.FindAsync(institutionId, id);
             if (reg == null) return false;
             _context.Registrations.Remove(reg);
             return await _context.SaveChangesAsync() > 0;
         }
 
-        public async Task<bool> UpdateStatusAsync(string registrationId, string newStatus)
+        public async Task<bool> UpdateStatusAsync(string registrationId, int institutionId, string newStatus)
         {
-            var registration = await _context.Registrations.FindAsync(registrationId);
+            var registration = await _context.Registrations.FindAsync(institutionId, registrationId);
             if (registration == null) return false;
             registration.RegistrationStatus = newStatus;
-            _context.Registrations.Update(registration);
             return await _context.SaveChangesAsync() > 0;
         }
 
         public async Task<List<Registration>> GetPendingAsync(int institutionId)
             => await _context.Registrations
+                .AsNoTracking()
                 .Where(r => r.RegistrationStatus == "ממתין" && r.InstitutionId == institutionId)
                 .ToListAsync();
 
         public async Task<List<Registration>> GetByStatusAsync(int institutionId, string status)
             => await _context.Registrations
+                .AsNoTracking()
                 .Where(r => r.InstitutionId == institutionId && r.RegistrationStatus == status)
                 .ToListAsync();
 
@@ -91,26 +94,17 @@ namespace ChafetzChesed.BLL.Services
 
         public async Task<bool> UpdateAsync(Registration updated)
         {
-            var existing = await _context.Registrations.FindAsync(updated.ID);
+            var existing = await _context.Registrations.FindAsync(updated.InstitutionId, updated.ID);
             if (existing == null) return false;
 
+            // שמירה על הסיסמה הקיימת אם לא שינית אותה בחוץ
             updated.Password = existing.Password;
+
             _context.Entry(existing).CurrentValues.SetValues(updated);
             existing.StatusUpdatedAt = DateTime.Now;
 
             await _context.SaveChangesAsync();
             return true;
-        }
-
-        public async Task<bool> UpdatePartialAsync(string userId, RegistrationUpdateDto dto)
-        {
-            var existing = await _context.Registrations
-                .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.ID == userId);
-
-            if (existing == null) return false;
-
-            return await UpdatePartialAsync(userId, dto, existing.InstitutionId, userId);
         }
 
         public async Task<bool> UpdatePartialAsync(string userId, RegistrationUpdateDto dto, int institutionId, string actorId)
@@ -126,11 +120,7 @@ namespace ChafetzChesed.BLL.Services
                 var newEmail = NormalizeEmail(dto.Email);
                 var oldEmail = NormalizeEmail(existing.Email);
 
-                if (string.Equals(newEmail, oldEmail, StringComparison.Ordinal))
-                {
-                    dto.Email = null;
-                }
-                else
+                if (!string.Equals(newEmail, oldEmail, StringComparison.Ordinal))
                 {
                     bool emailExists = await _context.Registrations.AnyAsync(r =>
                         r.InstitutionId == institutionId &&
@@ -143,6 +133,10 @@ namespace ChafetzChesed.BLL.Services
 
                     changes.Add(new { field = "Email", old = existing.Email, @new = dto.Email });
                     existing.Email = newEmail;
+                }
+                else
+                {
+                    dto.Email = null; // אין שינוי
                 }
             }
 

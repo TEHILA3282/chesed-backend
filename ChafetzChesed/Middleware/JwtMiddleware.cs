@@ -17,7 +17,6 @@ namespace ChafetzChesed.Middleware
             _next = next;
             _jwtSettings = configuration.GetSection("Jwt").Get<JwtSettings>()
                 ?? throw new InvalidOperationException("Missing Jwt settings in configuration (section 'Jwt').");
-
         }
 
         public async Task Invoke(HttpContext context, IRegistrationService registrationService)
@@ -32,8 +31,9 @@ namespace ChafetzChesed.Middleware
                 path.StartsWith("/favicon") ||
                 path.StartsWith("/api/deposittypes") ||
                 path.StartsWith("/api/loantypes") ||
-                path.StartsWith("/index.html")||
-                path.StartsWith("/api/auth/forgot-password")||
+                path.StartsWith("/index.html") ||
+                path.StartsWith("/api/auth/forgot-password") ||
+                path.StartsWith("/api/institutions/public-info") ||
                 path.StartsWith("/api/registration/check-exists")
             ))
             {
@@ -41,13 +41,12 @@ namespace ChafetzChesed.Middleware
                 return;
             }
 
-            var token = context.Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+            var token = context.Request.Headers["Authorization"].FirstOrDefault()?.Split(' ').Last();
 
-            if (token != null)
+            if (!string.IsNullOrWhiteSpace(token))
             {
-                var success = await AttachUserToContext(context, registrationService, token);
-                if (!success)
-                    return;
+                var ok = await AttachUserToContext(context, registrationService, token);
+                if (!ok) return;
             }
 
             await _next(context);
@@ -76,13 +75,18 @@ namespace ChafetzChesed.Middleware
 
                 var userId = jwtToken.Claims.First(x => x.Type == JwtRegisteredClaimNames.Sub).Value;
                 var role = jwtToken.Claims.FirstOrDefault(x => x.Type == ClaimTypes.Role)?.Value;
+
+                // נעדיף InstitutionId מהטוקן, אבל נשלים מה-Headers/Items אם צריך
+                int tokenInstitutionId = 0;
                 var institutionIdClaim = jwtToken.Claims.FirstOrDefault(x => x.Type == "InstitutionId")?.Value;
-                int.TryParse(institutionIdClaim, out int tokenInstitutionId);
+                int.TryParse(institutionIdClaim, out tokenInstitutionId);
 
-                if (tokenInstitutionId > 0)
-                    context.Items["InstitutionId"] = tokenInstitutionId;
+                var resolvedInstitutionId = ResolveInstitutionId(context, tokenInstitutionId);
+                if (resolvedInstitutionId > 0)
+                    context.Items["InstitutionId"] = resolvedInstitutionId;
 
-                var user = await registrationService.GetByIdAsync(userId);
+                // ⚠️ חשוב: החתימה החדשה דורשת institutionId
+                var user = await registrationService.GetByIdAsync(userId, resolvedInstitutionId);
                 if (user == null || user.RegistrationStatus == "נדחה")
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -99,13 +103,14 @@ namespace ChafetzChesed.Middleware
                     return false;
                 }
 
+                // התאמת מוסד מהנתיב (אם קיים) מול זה שבטוקן/נפתר
                 var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length >= 3 && int.TryParse(parts[2], out int pathInstitutionId))
                 {
-                    if (tokenInstitutionId > 0 && pathInstitutionId != tokenInstitutionId)
+                    if (resolvedInstitutionId > 0 && pathInstitutionId != resolvedInstitutionId)
                     {
                         context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                        await context.Response.WriteAsync("גישה נדחתה – מוסד לא תואם לטוקן");
+                        await context.Response.WriteAsync("גישה נדחתה – מוסד לא תואם לטוקן/כותרות");
                         return false;
                     }
                 }
@@ -121,5 +126,19 @@ namespace ChafetzChesed.Middleware
             }
         }
 
+        private static int ResolveInstitutionId(HttpContext ctx, int fromToken)
+        {
+            if (fromToken > 0) return fromToken;
+
+            // קודם Items (מידלוורים קודמים)
+            if (ctx.Items.TryGetValue("InstitutionId", out var v) && v is int ok && ok > 0)
+                return ok;
+
+            // כותרת שהקליינט שם
+            if (int.TryParse(ctx.Request.Headers["X-Institution-Id"].FirstOrDefault(), out var fromHeader) && fromHeader > 0)
+                return fromHeader;
+
+            return 0;
+        }
     }
 }

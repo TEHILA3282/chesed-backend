@@ -1,15 +1,17 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using ChafetzChesed.Common.DTOs;
+﻿using ChafetzChesed.Common.DTOs;
 using ChafetzChesed.DAL.Data;
 using ChafetzChesed.DAL.Entities;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 [ApiController]
 [Route("[controller]")]
+[Route("api/[controller]")] // מאפשר גם /api/contact
 public class ContactController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly ILogger<ContactController> _logger;
+
     public ContactController(AppDbContext db, ILogger<ContactController> logger)
     {
         _db = db; _logger = logger;
@@ -26,7 +28,7 @@ public class ContactController : ControllerBase
         throw new InvalidOperationException("Institution not resolved");
     }
 
-    [HttpPost] 
+    [HttpPost]
     public async Task<IActionResult> Create([FromBody] ContactRequestCreateDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.FirstName) ||
@@ -51,7 +53,7 @@ public class ContactController : ControllerBase
 
         var entity = new ContactRequest
         {
-            InstitutionId = instId, 
+            InstitutionId = instId,
             FirstName = dto.FirstName.Trim(),
             LastName = dto.LastName.Trim(),
             Email = dto.Email.Trim(),

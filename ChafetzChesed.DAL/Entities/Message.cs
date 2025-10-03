@@ -1,5 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace ChafetzChesed.DAL.Entities
 {
@@ -8,9 +7,12 @@ namespace ChafetzChesed.DAL.Entities
         [Key]
         public int Id { get; set; }
 
+        // FK חלק 2 (מתכתב עם Registration.ID)
         [Required]
+        [MaxLength(9)]
         public string Zeout { get; set; } = string.Empty;
 
+        // FK חלק 1 (מתכתב עם Registration.InstitutionId)
         [Required]
         public int InstitutionId { get; set; }
 
@@ -26,8 +28,7 @@ namespace ChafetzChesed.DAL.Entities
         [Required]
         public DateTime CreatedAt { get; set; }
 
-        [ForeignKey(nameof(Zeout))]
+        // הסרנו את [ForeignKey(nameof(Zeout))] – המיפוי יעשה ב-OnModelCreating עם FK מרוכב
         public Registration? Registration { get; set; }
     }
 }
-
