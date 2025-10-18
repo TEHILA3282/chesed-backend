@@ -13,59 +13,100 @@ public class SyncController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IDeltaSyncService _delta;
-    public SyncController(AppDbContext db, IDeltaSyncService delta) { _db = db; _delta = delta; }
+
+    public SyncController(AppDbContext db, IDeltaSyncService delta)
+    {
+        _db = db;
+        _delta = delta;
+    }
 
     private int GetInstitutionId()
     {
-        if (HttpContext.Items.TryGetValue("InstitutionId", out var v) && v is int id && id > 0) return id;
+        if (HttpContext.Items.TryGetValue("InstitutionId", out var v) && v is int id && id > 0)
+            return id;
         throw new InvalidOperationException("Institution not resolved");
     }
 
- 
-
+    // ------------------------------------------------------------
+    // Deposits
+    // הערה חשובה:
+    // אחרי שינוי הסכמה: Deposits.DepositTypeId הוא STRING (שם הסוג).
+    // כאן אנו מתרגמים בחזרה ל-ID מספרי כדי להתאים ל-DepositDto.
+    // ------------------------------------------------------------
     [HttpGet("deposits/{lastId:int}")]
     public async Task<IActionResult> GetDepositsRaw(int lastId, [FromQuery] int limit = 200)
     {
         int instId = GetInstitutionId();
+
         var res = await _delta.GetDeltaAsync(
             _db.Deposits.AsNoTracking(),
-            instId, lastId, limit,
+            instId,
+            lastId,
+            limit,
             d => new DepositDto(
-                d.ID, d.InstitutionId, d.ClientID, d.DepositDate,
-                d.DepositTypeID, d.Amount, d.PurposeDetails,
-                d.IsDirectDeposit, d.DepositReceivedDate, d.PaymentMethod
+                d.ID,
+                d.InstitutionId,
+                d.ClientID,
+                d.DepositDate,
+
+                // תרגום Name -> ID במסד (תת-שאילתה בטוחה ל-EF)
+                _db.DepositTypes
+                    .Where(t => t.Name == d.DepositTypeId)
+                    .Select(t => t.ID)
+                    .FirstOrDefault(),
+
+                d.Amount,
+                d.PurposeDetails,
+                d.IsDirectDeposit,
+                d.DepositReceivedDate,
+                d.PaymentMethod
             ),
             idPropertyName: "ID"
         );
+
         return Ok(res.Items);
     }
 
-
-
+    // ------------------------------------------------------------
+    // Loans
+    // ------------------------------------------------------------
     [HttpGet("loans/{lastId:int}")]
     public async Task<IActionResult> GetLoansRaw(int lastId, [FromQuery] int limit = 200)
     {
         int instId = GetInstitutionId();
+
         var res = await _delta.GetDeltaAsync(
             _db.Loans.AsNoTracking(),
-            instId, lastId, limit,
+            instId,
+            lastId,
+            limit,
             l => new LoanDto(
-                l.ID, l.InstitutionId, l.ClientID, l.Amount,
-                l.InstallmentsCount, l.LoanDate, l.Purpose, l.PurposeDetails,
-                l.IsDeleted, l.UpdatedAt, l.LoanTypeID
+                l.ID,
+                l.InstitutionId,
+                l.ClientID,
+                l.Amount,
+                l.InstallmentsCount,
+                l.LoanDate,
+                l.Purpose,
+                l.PurposeDetails,
+                l.IsDeleted,
+                l.UpdatedAt,
+                l.LoanTypeID
             ),
             idPropertyName: "ID"
         );
+
         return Ok(res.Items);
     }
 
- 
-
+    // ------------------------------------------------------------
+    // Registration (Full)
+    // ------------------------------------------------------------
     [HttpGet("registration/full")]
     public async Task<IActionResult> GetRegistrationFullRaw(
-      [FromQuery] int page = 1,
-      [FromQuery] int limit = 200,
-      [FromQuery] string? status = null)
+        [FromQuery] int page = 1,
+        [FromQuery] int limit = 200,
+        [FromQuery] string? status = null)
     {
         int instId = GetInstitutionId();
 
@@ -92,7 +133,9 @@ public class SyncController : ControllerBase
         return Ok(items);
     }
 
-
+    // ------------------------------------------------------------
+    // Bank Accounts
+    // ------------------------------------------------------------
     [HttpGet("bank-accounts/{lastId:int}")]
     public async Task<IActionResult> GetBankAccountsRaw(int lastId, [FromQuery] int limit = 200)
     {
@@ -122,14 +165,19 @@ public class SyncController : ControllerBase
         return Ok(items);
     }
 
-
+    // ------------------------------------------------------------
+    // Deposit / Withdraw Requests
+    // ------------------------------------------------------------
     [HttpGet("deposit-withdraw-requests/{lastId:int}")]
     public async Task<IActionResult> GetDepositWithdrawRequestsRaw(int lastId, [FromQuery] int limit = 200)
     {
         int instId = GetInstitutionId();
+
         var res = await _delta.GetDeltaAsync(
             _db.DepositWithdrawRequests.AsNoTracking(),
-            instId, lastId, limit,
+            instId,
+            lastId,
+            limit,
             r => new DepositWithdrawRequestDto(
                 r.ID,
                 r.InstitutionId,
@@ -140,25 +188,41 @@ public class SyncController : ControllerBase
             ),
             idPropertyName: "ID"
         );
+
         return Ok(res.Items);
     }
 
+    // ------------------------------------------------------------
+    // Freeze Requests
+    // ------------------------------------------------------------
     [HttpGet("freeze-requests/{lastId:int}")]
     public async Task<IActionResult> GetFreezeRequestsRaw(int lastId, [FromQuery] int limit = 200)
     {
         int instId = GetInstitutionId();
+
         var res = await _delta.GetDeltaAsync(
             _db.FreezeRequests.AsNoTracking(),
-            instId, lastId, limit,
+            instId,
+            lastId,
+            limit,
             f => new FreezeRequestDto(
-                f.ID, f.InstitutionId, f.ClientID, f.RequestType, f.Reason, f.Acknowledged, f.CreatedAt
+                f.ID,
+                f.InstitutionId,
+                f.ClientID,
+                f.RequestType,
+                f.Reason,
+                f.Acknowledged,
+                f.CreatedAt
             ),
             idPropertyName: "ID"
         );
+
         return Ok(res.Items);
     }
 
-
+    // ------------------------------------------------------------
+    // Contact Requests
+    // ------------------------------------------------------------
     [HttpGet("contact-requests/{lastId:int}")]
     public async Task<IActionResult> GetContactRequestsRaw(int lastId, [FromQuery] int limit = 200)
     {
@@ -166,7 +230,9 @@ public class SyncController : ControllerBase
 
         var res = await _delta.GetDeltaAsync(
             _db.ContactRequests.AsNoTracking(),
-            instId, lastId, limit,
+            instId,
+            lastId,
+            limit,
             c => new ContactRequestSyncDto(
                 c.ID,
                 c.InstitutionId,
@@ -183,7 +249,9 @@ public class SyncController : ControllerBase
         return Ok(res.Items);
     }
 
-
+    // ------------------------------------------------------------
+    // Audit Logs
+    // ------------------------------------------------------------
     [HttpGet("audit-logs/{lastId:int}")]
     public async Task<IActionResult> GetAuditLogsRaw(
         int lastId,
@@ -223,8 +291,9 @@ public class SyncController : ControllerBase
         return Ok(res.Items);
     }
 
-
-
+    // ------------------------------------------------------------
+    // Loan Guarantors  (טיפול ב-null כדי להוריד אזהרות CS8604)
+    // ------------------------------------------------------------
     [HttpGet("loan-guarantors/{lastId:int}")]
     public async Task<IActionResult> GetLoanGuarantorsRaw(int lastId, [FromQuery] int limit = 200)
     {
@@ -241,7 +310,12 @@ public class SyncController : ControllerBase
         var list = await q.ToListAsync();
 
         var items = list.Select(g => new LoanGuarantorSyncDto(
-            g.Id, instId, g.LoanId, g.IdNumber, g.FullName, g.Phone
+            g.Id,
+            instId,
+            g.LoanId,
+            g.IdNumber ?? string.Empty,  
+            g.FullName ?? string.Empty,  
+            g.Phone ?? string.Empty       
         )).ToList();
 
         return Ok(items);

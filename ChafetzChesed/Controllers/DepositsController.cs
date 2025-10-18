@@ -1,8 +1,9 @@
+using ChafetzChesed.BLL.Interfaces;
+using ChafetzChesed.Common.DTOs;
+using ChafetzChesed.DAL.Data;
+using ChafetzChesed.DAL.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ChafetzChesed.BLL.Interfaces;
-using ChafetzChesed.DAL.Entities;
-using ChafetzChesed.Common.DTOs;
 
 namespace ChafetzChesed.Controllers
 {
@@ -12,6 +13,7 @@ namespace ChafetzChesed.Controllers
     {
         private readonly IDepositService _service;
         private readonly ILogger<DepositsController> _logger;
+        private readonly AppDbContext _context; // נוסיף כדי לקרוא DepositTypes ישירות
 
         private static readonly HashSet<string> AllowedPaymentMethods = new(new[]
         {
@@ -29,10 +31,14 @@ namespace ChafetzChesed.Controllers
             ["existing"] = "הו\"ק קיימת בקופת הגמ\"ח"
         };
 
-        public DepositsController(IDepositService service, ILogger<DepositsController> logger)
+        public DepositsController(
+            IDepositService service,
+            ILogger<DepositsController> logger,
+            AppDbContext context)
         {
             _service = service;
             _logger = logger;
+            _context = context;
         }
 
         private Registration? GetLoggedInUser() => HttpContext.Items["User"] as Registration;
@@ -48,6 +54,9 @@ namespace ChafetzChesed.Controllers
             throw new InvalidOperationException("Institution not resolved");
         }
 
+        // ==========================
+        // ======  GET ALL  =========
+        // ==========================
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
@@ -56,6 +65,9 @@ namespace ChafetzChesed.Controllers
             return Ok(items);
         }
 
+        // ==========================
+        // ======  GET BY ID  =======
+        // ==========================
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
         {
@@ -65,6 +77,9 @@ namespace ChafetzChesed.Controllers
             return Ok(item);
         }
 
+        // ==========================
+        // ======  CREATE  ==========
+        // ==========================
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateDepositDto dto)
         {
@@ -78,6 +93,16 @@ namespace ChafetzChesed.Controllers
             if (dto.DepositTypeId <= 0)
                 return BadRequest("חובה לבחור סוג הפקדה");
 
+            // 🔹 שלב חדש: תרגום DepositTypeId → DepositTypes.Name
+            var typeName = await _context.DepositTypes
+                .Where(t => t.ID == dto.DepositTypeId)
+                .Select(t => t.Name)
+                .FirstOrDefaultAsync();
+
+            if (typeName == null)
+                return BadRequest($"לא נמצא סוג הפקדה עם מזהה {dto.DepositTypeId}");
+
+            // ===== מיפוי שיטת תשלום =====
             string? dbPaymentMethod = null;
             if (!string.IsNullOrWhiteSpace(dto.PaymentMethod))
             {
@@ -120,8 +145,8 @@ namespace ChafetzChesed.Controllers
 
             var deposit = new Deposit
             {
-                ClientID = user.ID,
-                DepositTypeID = dto.DepositTypeId,
+                ClientID = user.ID.ToString(),
+                DepositTypeId = typeName,   // 🔹 נשמר השם, לא המספר
                 Amount = dto.Amount.Value,
                 PurposeDetails = dto.PurposeDetails,
                 IsDirectDeposit = dto.IsDirectDeposit,
@@ -149,6 +174,9 @@ namespace ChafetzChesed.Controllers
             }
         }
 
+        // ==========================
+        // ======  UPDATE  ==========
+        // ==========================
         [HttpPut]
         public async Task<IActionResult> Update([FromBody] Deposit deposit)
         {
@@ -170,6 +198,9 @@ namespace ChafetzChesed.Controllers
             return Ok(updated);
         }
 
+        // ==========================
+        // ======  DELETE  ==========
+        // ==========================
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int id)
         {
@@ -179,6 +210,9 @@ namespace ChafetzChesed.Controllers
             return NoContent();
         }
 
+        // ==========================
+        // ===== DEBUG HELPERS ======
+        // ==========================
         [HttpPost("debug-validate")]
         public IActionResult DebugValidate([FromBody] CreateDepositDto dto)
         {

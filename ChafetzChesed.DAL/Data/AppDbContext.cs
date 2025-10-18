@@ -50,9 +50,9 @@ namespace ChafetzChesed.DAL.Data
                 e.Property(r => r.Email).HasMaxLength(100).IsRequired();
                 e.Property(r => r.RegistrationStatus).HasMaxLength(20);
 
-                // קשר למוסד (ל־AdminController וכו')
+                // קשר למוסד
                 e.HasOne(r => r.Institution)
-                 .WithMany() // אם יש ICollection<Registration> ב-Institution אפשר: .WithMany(i => i.Registrations)
+                 .WithMany()
                  .HasForeignKey(r => r.InstitutionId)
                  .OnDelete(DeleteBehavior.Restrict);
             });
@@ -74,7 +74,7 @@ namespace ChafetzChesed.DAL.Data
                 entity.HasIndex(m => new { m.InstitutionId, m.Zeout, m.CreatedAt });
             });
 
-            /* ===== Loans -> Registration (by (InstitutionId, ClientID)) ===== */
+            /* ===== LoanType / Loans ===== */
             modelBuilder.Entity<Loan>(entity =>
             {
                 entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
@@ -112,7 +112,6 @@ namespace ChafetzChesed.DAL.Data
                       .HasPrincipalKey(r => new { r.InstitutionId, r.ID })
                       .OnDelete(DeleteBehavior.Restrict);
 
-                // סינטקס חדש ל-CheckConstraint (מחליף Obsolete)
                 entity.ToTable(t =>
                 {
                     t.HasCheckConstraint("CK_FreezeRequests_RequestType",
@@ -130,14 +129,40 @@ namespace ChafetzChesed.DAL.Data
                       .OnDelete(DeleteBehavior.Restrict);
             });
 
-            /* ===== Deposits -> Registration ===== */
+            /* ===== DepositTypes ===== */
+            modelBuilder.Entity<DepositType>(t =>
+            {
+                t.HasIndex(x => x.Name).IsUnique();
+                t.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            });
+
+            /* ===== Deposits -> Registration + DepositType(Name) ===== */
             modelBuilder.Entity<Deposit>(entity =>
             {
+                // קשר ל-Registration
                 entity.HasOne(d => d.Client)
                       .WithMany()
                       .HasForeignKey(d => new { d.InstitutionId, d.ClientID })
                       .HasPrincipalKey(r => new { r.InstitutionId, r.ID })
                       .OnDelete(DeleteBehavior.Restrict);
+
+                // עמודת FK מפורשת
+                entity.Property(d => d.DepositTypeId)
+                      .HasColumnName("DepositTypeId")
+                      .HasMaxLength(100)
+                      .IsRequired();
+
+                // קשר ל-DepositTypes לפי Name
+                entity.HasOne(d => d.DepositType)
+                      .WithMany()
+                      .HasPrincipalKey(t => t.Name)        // principal key = Name
+                      .HasForeignKey(d => d.DepositTypeId) // FK בטבלת Deposits הוא השם
+                      .OnDelete(DeleteBehavior.Restrict)
+                      .HasConstraintName("FK_Deposits_DepositTypes_Name");
+
+                // התעלמות משדות Shadow ישנים אם קיימים
+                entity.Ignore("DepositTypeID");
+                entity.Ignore("DepositTypeId1");
             });
 
             /* ===== BankAccounts -> Registration (ללא Navigation במחלקה) ===== */
@@ -150,20 +175,6 @@ namespace ChafetzChesed.DAL.Data
                       .OnDelete(DeleteBehavior.Restrict);
             });
 
-            /* ===== LoanGuarantor ===== */
-            modelBuilder.Entity<LoanGuarantor>(entity =>
-            {
-                entity.Property(g => g.IdNumber).HasMaxLength(20).IsRequired();
-                entity.Property(g => g.FullName).HasMaxLength(200).IsRequired();
-                entity.Property(g => g.Phone).HasMaxLength(30).IsRequired();
-
-                entity.HasOne(g => g.Loan)
-                      .WithMany(l => l.Guarantors)
-                      .HasForeignKey(g => g.LoanId)
-                      .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasIndex(g => new { g.LoanId, g.IdNumber }).IsUnique();
-            });
 
             /* ===== AuditLog ===== */
             modelBuilder.Entity<AuditLog>(e =>

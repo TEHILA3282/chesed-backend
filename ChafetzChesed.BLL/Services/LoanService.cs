@@ -14,6 +14,7 @@ namespace ChafetzChesed.BLL.Services
         {
             _context = context;
         }
+
         public async Task<List<Loan>> GetAllAsync() =>
             await _context.Loans
                 .Include(l => l.Guarantors)
@@ -49,6 +50,7 @@ namespace ChafetzChesed.BLL.Services
             await _context.SaveChangesAsync();
             return true;
         }
+
         public async Task<Loan> CreateAsync(CreateLoanDto dto, Registration currentUser)
         {
             if (currentUser == null) throw new UnauthorizedAccessException("משתמש לא מאומת");
@@ -66,6 +68,7 @@ namespace ChafetzChesed.BLL.Services
                     !string.IsNullOrWhiteSpace(g.Email))
                 .Select(g => new LoanGuarantor
                 {
+                    InstitutionId = currentUser.InstitutionId,
                     IdNumber = g.IdNumber?.Trim(),
                     FullName = g.FullName?.Trim(),
                     Phone = g.Phone?.Trim(),

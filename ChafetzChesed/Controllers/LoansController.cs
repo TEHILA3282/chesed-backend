@@ -22,6 +22,35 @@ namespace ChafetzChesed.Controllers
             var user = GetCurrentUser();
             if (user == null) return Unauthorized("משתמש לא מאומת");
             if (dto == null) return BadRequest("בקשה ריקה");
+
+            // ולידציה לערבים: אם שורה לא ריקה - נדרש מינימום שדות
+            if (dto.Guarantors != null)
+            {
+                for (int i = 0; i < dto.Guarantors.Count; i++)
+                {
+                    var g = dto.Guarantors[i];
+                    bool any = !string.IsNullOrWhiteSpace(g.IdNumber)
+                            || !string.IsNullOrWhiteSpace(g.FullName)
+                            || !string.IsNullOrWhiteSpace(g.Phone)
+                            || !string.IsNullOrWhiteSpace(g.Occupation)
+                            || !string.IsNullOrWhiteSpace(g.City)
+                            || !string.IsNullOrWhiteSpace(g.Street)
+                            || !string.IsNullOrWhiteSpace(g.HouseNumber)
+                            || !string.IsNullOrWhiteSpace(g.LoanLink)
+                            || !string.IsNullOrWhiteSpace(g.Email);
+
+                    if (any)
+                    {
+                        if (string.IsNullOrWhiteSpace(g.IdNumber))
+                            ModelState.AddModelError($"Guarantors[{i}].IdNumber", "חובה למלא ת\"ז ערב");
+                        if (string.IsNullOrWhiteSpace(g.FullName))
+                            ModelState.AddModelError($"Guarantors[{i}].FullName", "חובה למלא שם מלא של ערב");
+                        if (string.IsNullOrWhiteSpace(g.Phone))
+                            ModelState.AddModelError($"Guarantors[{i}].Phone", "חובה למלא טלפון ערב");
+                    }
+                }
+            }
+
             if (!ModelState.IsValid) return ValidationProblem(ModelState);
 
             var loan = await _service.CreateAsync(dto, user);
@@ -29,8 +58,7 @@ namespace ChafetzChesed.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll() =>
-            Ok(await _service.GetAllAsync());
+        public async Task<IActionResult> GetAll() => Ok(await _service.GetAllAsync());
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
